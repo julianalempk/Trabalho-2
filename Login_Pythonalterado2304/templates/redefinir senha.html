@@ -1,0 +1,17 @@
+{% block title %}Redefinir Senha{% endblock %}
+
+{% block content %}
+    <h2>Redefinir Senha</h2>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    <form method="POST">
+        <input type="password" name="nova_senha" placeholder="Nova Senha" required>
+        <input type="password" name="confirmar_nova_senha" placeholder="Confirmar Nova Senha" required>
+        <button type="submit">Redefinir Senha</button>
+    </form>
+{% endblock %}

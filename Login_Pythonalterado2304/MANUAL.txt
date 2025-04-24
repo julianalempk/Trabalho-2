@@ -1,0 +1,411 @@
+ARQUIVO: app.py
+
+import os
+import random
+import sqlite3
+import smtplib
+from email.mime.text import MIMEText
+from flask import Flask, render_template, request, redirect, url_for, session, flash
+from config import SECRET_KEY, EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, DATABASE
+from werkzeug.security import generate_password_hash, check_password_hash
+
+app = Flask(__name__)
+app.secret_key = SECRET_KEY
+
+def get_db_connection():
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def criar_tabelas():
+    with get_db_connection() as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                senha TEXT NOT NULL,
+                verificado INTEGER DEFAULT 0,
+                codigo_verificacao TEXT
+            )
+        ''')
+        conn.commit()
+
+def enviar_email_verificacao(destinatario, codigo):
+    msg = MIMEText(f"Seu código de verificação é: {codigo}")
+    msg["Subject"] = "Código de Verificação"
+    msg["From"] = EMAIL_USER
+    msg["To"] = destinatario
+    
+    try:
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_USER, EMAIL_PASS)
+            server.sendmail(EMAIL_USER, destinatario, msg.as_string())
+        return True
+    except Exception as e:
+        print("Erro ao enviar email:", e)
+        return False
+
+@app.route("/", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form["email"]
+        senha = request.form["senha"]
+        
+        with get_db_connection() as conn:
+            usuario = conn.execute("SELECT id, verificado, senha FROM usuarios WHERE email = ?", (email,)).fetchone()
+        
+        if usuario and check_password_hash(usuario["senha"], senha):
+            if usuario["verificado"] == 0:
+                flash("Conta não verificada. Verifique seu e-mail.", "danger")
+                return redirect(url_for("verificar", email=email))
+            session["usuario_id"] = usuario["id"]
+            flash("Login bem-sucedido!", "success")
+            return redirect(url_for("dashboard"))
+        
+        flash("E-mail ou senha incorretos.", "danger")
+    return render_template("index.html")
+
+@app.route("/registro", methods=["GET", "POST"])
+def registro():
+    if request.method == "POST":
+        email = request.form["email"]
+        senha = request.form["senha"]
+        confirmar_senha = request.form["confirmar_senha"]
+        
+        if senha != confirmar_senha:
+            flash("As senhas não coincidem.", "danger")
+            return redirect(url_for("registro"))
+
+        # Verificação da força da senha
+        if len(senha) < 8 or not any(c.isupper() for c in senha) or not any(c.isdigit() for c in senha) or not any(c in "!@#$%^&*(),.?\":{}|<>" for c in senha):
+            flash("A senha deve ter pelo menos 8 caracteres, incluindo uma letra maiúscula, um número e um caractere especial.", "danger")
+            return redirect(url_for("registro"))
+        
+        # Gerando o hash da senha
+        senha_hash = generate_password_hash(senha)
+
+        codigo_verificacao = str(random.randint(100000, 999999))
+        
+        with get_db_connection() as conn:
+            try:
+                conn.execute("INSERT INTO usuarios (email, senha, codigo_verificacao) VALUES (?, ?, ?)", (email, senha_hash, codigo_verificacao))
+                conn.commit()
+                enviar_email_verificacao(email, codigo_verificacao)
+                flash("Registro bem-sucedido! Verifique seu e-mail.", "success")
+                return redirect(url_for("verificar", email=email))
+            except sqlite3.IntegrityError:
+                flash("E-mail já cadastrado!", "danger")
+    return render_template("registro.html")
+
+@app.route("/verificar/<email>", methods=["GET", "POST"])
+def verificar(email):
+    if request.method == "POST":
+        codigo_digitado = request.form["codigo"]
+        
+        with get_db_connection() as conn:
+            usuario = conn.execute("SELECT id FROM usuarios WHERE email = ? AND codigo_verificacao = ?", (email, codigo_digitado)).fetchone()
+            if usuario:
+                conn.execute("UPDATE usuarios SET verificado = 1 WHERE email = ?", (email,))
+                conn.commit()
+                flash("Conta verificada com sucesso! Faça login.", "success")
+                return redirect(url_for("login"))
+        
+        flash("Código incorreto!", "danger")
+    return render_template("verificar.html", email=email)
+
+@app.route("/dashboard")
+def dashboard():
+    if "usuario_id" not in session:
+        flash("Você precisa estar logado!", "danger")
+        return redirect(url_for("login"))
+    return render_template("dashboard.html")
+
+@app.route("/logout")
+def logout():
+    session.pop("usuario_id", None)
+    flash("Você saiu da sessão.", "info")
+    return redirect(url_for("login"))
+
+if __name__ == "__main__":
+    criar_tabelas()
+    app.run(debug=True)
+
+
+ARQUIVO: config.py
+
+import os
+
+SECRET_KEY = os.getenv("SECRET_KEY", "chave_secreta_super_segura")
+
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
+EMAIL_USER = os.getenv("EMAIL_USER", "almeida.cma@gmail.com")
+EMAIL_PASS = os.getenv("EMAIL_PASS", "ufkt dfcs tzkq fspd")
+
+DATABASE = "database.db"  # Agora definida corretamente
+
+
+ARQUIVO: mail.py
+
+import smtplib
+from email.mime.text import MIMEText
+from config import EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS
+
+def enviar_email(destinatario, assunto, mensagem):
+    msg = MIMEText(mensagem)
+    msg["Subject"] = assunto
+    msg["From"] = EMAIL_USER
+    msg["To"] = destinatario
+
+    try:
+        servidor = smtplib.SMTP(EMAIL_HOST, EMAIL_PORT)
+        servidor.starttls()
+        servidor.login(EMAIL_USER, EMAIL_PASS)
+        servidor.sendmail(EMAIL_USER, destinatario, msg.as_string())
+        servidor.quit()
+    except Exception as e:
+        print("Erro ao enviar e-mail:", e)
+
+
+ARQUIVO: static/css/style.css
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f0f0f0;
+    text-align: center;
+}
+
+h1 {
+    background-color: #333;
+    color: white;
+    padding: 10px;
+}
+
+main {
+    padding: 20px;
+}
+
+form {
+    background: white;
+    padding: 20px;
+    display: inline-block;
+    border-radius: 5px;
+    box-shadow: 0px 0px 10px #999;
+}
+
+input {
+    display: block;
+    width: 100%;
+    margin: 10px 0;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+button {
+    background-color: #28a745;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+button:hover {
+    background-color: #218838;
+}
+
+a {
+    display: block;
+    margin-top: 10px;
+    color: #007bff;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+.flash-messages p {
+    padding: 10px;
+    border-radius: 5px;
+    margin: 10px auto;
+    max-width: 400px;
+}
+
+.success { background: #d4edda; color: #155724; }
+.danger { background: #f8d7da; color: #721c24; }
+.info { background: #cce5ff; color: #004085; }
+
+
+ARQUIVO: templates/base.html
+
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Meu App{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Meu Sistema</h1>
+        {% if 'usuario_id' in session %}
+            <a href="{{ url_for('logout') }}">Sair</a>
+        {% endif %}
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=True) %}
+        {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                    <p class="{{ category }}">{{ message }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
+
+
+ARQUIVO: templates/dashboard.html
+
+{% extends 'base.html' %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+    <h2>Bem-vindo ao painel!</h2>
+    <p>Você está autenticado no sistema.</p>
+    <a href="{{ url_for('logout') }}">Sair</a>
+{% endblock %}
+
+
+ARQUIVO: templates/erro.html
+
+{% extends 'base.html' %}
+
+{% block title %}Erro{% endblock %}
+
+{% block content %}
+    <h2>Ocorreu um erro!</h2>
+    <p>{{ mensagem }}</p>
+    <a href="{{ url_for('login') }}">Voltar para Login</a>
+{% endblock %}
+
+
+ARQUIVO: templates/index.html
+
+{% extends 'base.html' %}
+
+{% block title %}Login{% endblock %}
+
+{% block content %}
+    <h2>Login</h2>
+    <form method="POST">
+        <input type="email" name="email" placeholder="Email" required>
+        <input type="password" name="senha" placeholder="Senha" required>
+        <button type="submit">Entrar</button>
+    </form>
+    <a href="{{ url_for('registro') }}">Registrar-se</a>
+{% endblock %}
+
+
+ARQUIVO: templates/registro.html
+
+{% extends 'base.html' %}
+
+{% block title %}Registro{% endblock %}
+
+{% block content %}
+    <h2>Registro</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST" onsubmit="return verificarSenha()">
+        <input type="email" name="email" placeholder="Email" required>
+
+        <input type="password" id="senha" name="senha" placeholder="Senha" required>
+        <input type="password" id="senha_confirmacao" name="confirmar_senha" placeholder="Confirme a Senha" required>
+
+        <p id="mensagemErro" style="color: red;"></p>
+
+        <button type="submit">Registrar</button>
+    </form>
+
+    <a href="{{ url_for('login') }}">Já tem conta? Faça login</a>
+
+    <script>
+        function verificarSenha() {
+            var senha = document.getElementById("senha").value;
+            var confirmacao = document.getElementById("senha_confirmacao").value;
+            var mensagemErro = document.getElementById("mensagemErro");
+
+            if (senha !== confirmacao) {
+                mensagemErro.innerText = "As senhas não coincidem!";
+                return false;
+            }
+
+            var regexMaiuscula = /[A-Z]/;
+            var regexNumero = /[0-9]/;
+            var regexEspecial = /[!@#$%^&*(),.?\":{}|<>]/;
+
+            if (senha.length < 8 || 
+                !regexMaiuscula.test(senha) || 
+                !regexNumero.test(senha) || 
+                !regexEspecial.test(senha)) {
+                mensagemErro.innerText = "A senha deve ter pelo menos 8 caracteres, incluindo uma letra maiúscula, um número e um caractere especial.";
+                return false;
+            }
+
+            mensagemErro.innerText = "";
+            return true;
+        }
+    </script>
+{% endblock %}
+
+
+ARQUIVO: templates/sucesso.html
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sucesso</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <h2>Login realizado com sucesso!</h2>
+</body>
+</html>
+
+
+ARQUIVO: templates/verificar.html
+
+{% extends 'base.html' %}
+
+{% block title %}Verificar Conta{% endblock %}
+
+{% block content %}
+    <h2>Verificação de Conta</h2>
+    <p>Um código foi enviado para {{ email }}</p>
+    <form method="POST">
+        <input type="text" name="codigo" placeholder="Código" required>
+        <button type="submit">Verificar</button>
+    </form>
+{% endblock %}

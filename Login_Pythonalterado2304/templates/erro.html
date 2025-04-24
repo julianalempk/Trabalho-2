@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+
+{% block title %}Erro{% endblock %}
+
+{% block content %}
+    <h2>Ocorreu um erro!</h2>
+    <p>{{ mensagem }}</p>
+    <a href="{{ url_for('login') }}">Voltar para Login</a>
+{% endblock %}

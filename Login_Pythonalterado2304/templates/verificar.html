@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+
+{% block title %}Verificar Conta{% endblock %}
+
+{% block content %}
+    <h2>Verificação de Conta</h2>
+    <p>Um código foi enviado para {{ email }}</p>
+    <form method="GET">
+        <input type="text" name="codigo" placeholder="Código" required>
+        <button type="submit">Verificar</button>
+    </form>
+{% endblock %}

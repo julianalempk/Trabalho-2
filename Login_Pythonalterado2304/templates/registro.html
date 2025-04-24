@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+
+{% block title %}Registro{% endblock %}
+
+{% block content %}
+    <h2>Registro</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST" onsubmit="return verificarSenha()">
+        <input type="email" name="email" placeholder="Email" required>
+
+        <input type="password" id="senha" name="senha" placeholder="Senha" required>
+        <input type="password" id="senha_confirmacao" name="confirmar_senha" placeholder="Confirme a Senha" required>
+
+        <p id="mensagemErro" style="color: red;"></p>
+
+        <!-- Checkbox para aceite da LGPD -->
+        <div>
+            <input type="checkbox" id="aceite_lgpd" name="aceite_lgpd" required>
+            <label for="aceite_lgpd">Eu concordo com a coleta e uso dos meus dados pessoais conforme a <a href="/politica-de-privacidade" target="_blank">Política de Privacidade</a>.</label>
+        </div>
+
+        <button type="submit">Registrar</button>
+    </form>
+
+    <a href="{{ url_for('login') }}">Já tem conta? Faça login</a>
+
+    <script>
+        function verificarSenha() {
+            var senha = document.getElementById("senha").value;
+            var confirmacao = document.getElementById("senha_confirmacao").value;
+            var mensagemErro = document.getElementById("mensagemErro");
+
+            if (senha !== confirmacao) {
+                mensagemErro.innerText = "As senhas não coincidem!";
+                return false;
+            }
+
+            var regexMaiuscula = /[A-Z]/;
+            var regexNumero = /[0-9]/;
+            var regexEspecial = /[!@#$%^&*(),.?\":{}|<>]/;
+
+            if (senha.length < 8 || 
+                !regexMaiuscula.test(senha) || 
+                !regexNumero.test(senha) || 
+                !regexEspecial.test(senha)) {
+                mensagemErro.innerText = "A senha deve ter pelo menos 8 caracteres, incluindo uma letra maiúscula, um número e um caractere especial.";
+                return false;
+            }
+
+            mensagemErro.innerText = "";
+            return true;
+        }
+    </script>
+{% endblock %}

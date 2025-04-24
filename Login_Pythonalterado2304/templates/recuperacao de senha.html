@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block title %}Esqueci minha Senha{% endblock %}
+
+{% block content %}
+    <h2>Esqueci minha Senha</h2>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    <form method="POST">
+        <input type="email" name="email" placeholder="Seu Email" required>
+        <button type="submit">Enviar Link de Recuperação</button>
+    </form>
+    <a href="{{ url_for('login') }}">Voltar para o Login</a>
+{% endblock %}
+
+{% extends 'base.html' %}
+
